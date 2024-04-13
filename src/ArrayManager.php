@@ -4,91 +4,30 @@ namespace Ispahbod\ArrayManager;
 
 class ArrayManager
 {
-    public static function accessible($value): bool
+    public static function isAccessible($value): bool
     {
         return is_array($value) || $value instanceof \ArrayAccess;
     }
 
-    public static function add(array $array, $key, $value): array
+    public static function appendValue(array $array, $key, $value): void
     {
-        if (is_null(static::get($array, $key))) {
-            static::set($array, $key, $value);
+        if (!isset($array[$key])) {
+            $array[$key] = $value;
         }
+    }
+
+    public static function mergeArrays(...$arrays): array
+    {
+        return array_merge([], ...array_filter($arrays, 'is_array'));
+    }
+
+    public static function removeKeys(array $array, $keys): array
+    {
+        static::forgetKey($array, $keys);
         return $array;
     }
 
-    public static function collapse(...$array): array
-    {
-        $results = [];
-        foreach ($array as $values) {
-            if (!is_array($values)) {
-                continue;
-            }
-            $results[] = $values;
-        }
-
-        return array_merge([], ...$results);
-    }
-    public static function crossJoin(...$arrays): array
-    {
-        $results = [[]];
-
-        foreach ($arrays as $index => $array) {
-            $append = [];
-
-            foreach ($results as $product) {
-                foreach ($array as $item) {
-                    $product[$index] = $item;
-
-                    $append[] = $product;
-                }
-            }
-
-            $results = $append;
-        }
-
-        return $results;
-    }
-
-    public static function divide(array $array): array
-    {
-        return [array_keys($array), array_values($array)];
-    }
-
-    public static function dot(array $array, $prepend = ''): array
-    {
-        $results = [];
-
-        foreach ($array as $key => $value) {
-            if (is_array($value) && !empty($value)) {
-                $results = array_merge($results, static::dot($value, $prepend . $key . '.'));
-            } else {
-                $results[$prepend . $key] = $value;
-            }
-        }
-
-        return $results;
-    }
-
-    public static function undot(array $array): array
-    {
-        $results = [];
-
-        foreach ($array as $key => $value) {
-            static::set($results, $key, $value);
-        }
-
-        return $results;
-    }
-
-    public static function except(array $array, $keys): array
-    {
-        static::forget($array, $keys);
-
-        return $array;
-    }
-
-    public static function exists(array $array, $key): bool
+    public static function keyExists(array $array, $key): bool
     {
         if (is_float($key)) {
             $key = (string)$key;
@@ -97,18 +36,14 @@ class ArrayManager
         return array_key_exists($key, $array);
     }
 
-    public static function first(array $array, callable $callback = null, $default = null): mixed
+    public static function findFirst(array $array, callable $callback = null, $default = null): mixed
     {
-        if (is_null($callback)) {
-            if (empty($array)) {
-                return value($default);
-            }
-
-            foreach ($array as $item) {
-                return $item;
-            }
-
+        if (empty($array)) {
             return value($default);
+        }
+
+        if (is_null($callback)) {
+            return reset($array);
         }
 
         foreach ($array as $key => $value) {
@@ -120,16 +55,16 @@ class ArrayManager
         return value($default);
     }
 
-    public static function last(array $array, callable $callback = null, $default = null): mixed
+    public static function findLast(array $array, callable $callback = null, $default = null): mixed
     {
         if (is_null($callback)) {
             return empty($array) ? value($default) : end($array);
         }
 
-        return static::first(array_reverse($array, true), $callback, $default);
+        return static::findFirst(array_reverse($array, true), $callback, $default);
     }
 
-    public static function take(array $array, int $limit): array
+    public static function sliceArray(array $array, int $limit): array
     {
         if ($limit < 0) {
             return array_slice($array, $limit, abs($limit));
@@ -138,7 +73,7 @@ class ArrayManager
         return array_slice($array, 0, $limit);
     }
 
-    public static function flatten($array, $depth = INF): array
+    public static function flattenArray($array, $depth = INF): array
     {
         $result = [];
 
@@ -148,7 +83,7 @@ class ArrayManager
             } else {
                 $values = $depth === 1
                     ? array_values($item)
-                    : static::flatten($item, $depth - 1);
+                    : static::flattenArray($item, $depth - 1);
                 foreach ($values as $value) {
                     $result[] = $value;
                 }
@@ -158,7 +93,7 @@ class ArrayManager
         return $result;
     }
 
-    public static function forget(array &$array, $keys): void
+    public static function forgetKey(array &$array, $keys): void
     {
         $original = &$array;
 
@@ -169,7 +104,7 @@ class ArrayManager
         }
 
         foreach ($keys as $key) {
-            if (static::exists($array, $key)) {
+            if (static::keyExists($array, $key)) {
                 unset($array[$key]);
 
                 continue;
@@ -178,7 +113,7 @@ class ArrayManager
             $array = &$original;
             while (count($parts) > 1) {
                 $part = array_shift($parts);
-                if (isset($array[$part]) && static::accessible($array[$part])) {
+                if (isset($array[$part]) && static::isAccessible($array[$part])) {
                     $array = &$array[$part];
                 } else {
                     continue 2;
@@ -188,9 +123,9 @@ class ArrayManager
         }
     }
 
-    public static function get(array $array, $key, $default = null): array
+    public static function getValue(array $array, $key, $default = null): array
     {
-        if (!static::accessible($array)) {
+        if (!static::isAccessible($array)) {
             return value($default);
         }
 
@@ -198,7 +133,7 @@ class ArrayManager
             return $array;
         }
 
-        if (static::exists($array, $key)) {
+        if (static::keyExists($array, $key)) {
             return $array[$key];
         }
 
@@ -207,7 +142,7 @@ class ArrayManager
         }
 
         foreach (explode('.', $key) as $segment) {
-            if (static::accessible($array) && static::exists($array, $segment)) {
+            if (static::isAccessible($array) && static::keyExists($array, $segment)) {
                 $array = $array[$segment];
             } else {
                 return value($default);
@@ -217,7 +152,7 @@ class ArrayManager
         return $array;
     }
 
-    public static function has(array $array, $keys): bool
+    public static function containsKeys(array $array, $keys): bool
     {
         $keys = (array)$keys;
 
@@ -228,12 +163,12 @@ class ArrayManager
         foreach ($keys as $key) {
             $subKeyArray = $array;
 
-            if (static::exists($array, $key)) {
+            if (static::keyExists($array, $key)) {
                 continue;
             }
 
             foreach (explode('.', $key) as $segment) {
-                if (static::accessible($subKeyArray) && static::exists($subKeyArray, $segment)) {
+                if (static::isAccessible($subKeyArray) && static::keyExists($subKeyArray, $segment)) {
                     $subKeyArray = $subKeyArray[$segment];
                 } else {
                     return false;
@@ -244,7 +179,7 @@ class ArrayManager
         return true;
     }
 
-    public static function hasAny(array $array, $keys): bool
+    public static function containsAnyKey(array $array, $keys): bool
     {
         if (is_null($keys)) {
             return false;
@@ -261,7 +196,7 @@ class ArrayManager
         }
 
         foreach ($keys as $key) {
-            if (static::has($array, $key)) {
+            if (static::containsKeys($array, $key)) {
                 return true;
             }
         }
@@ -269,53 +204,29 @@ class ArrayManager
         return false;
     }
 
-    public static function isAssoc(array $array): bool
+    public static function isAssociative(array $array): bool
     {
         return !array_is_list($array);
     }
 
-    public static function isList(array $array): bool
+    public static function isSequential(array $array): bool
     {
         return array_is_list($array);
     }
 
-    public static function join($array, $glue, $finalGlue = '')
-    {
-        if ($finalGlue === '') {
-            return implode($glue, $array);
-        }
-
-        if (count($array) === 0) {
-            return '';
-        }
-
-        if (count($array) === 1) {
-            return end($array);
-        }
-
-        $finalItem = array_pop($array);
-
-        return implode($glue, $array) . $finalGlue . $finalItem;
-    }
-
-    public static function prependKeysWith(array $array, $prependWith)
-    {
-        return static::mapWithKeys($array, fn($item, $key) => [$prependWith . $key => $item]);
-    }
-
-    public static function only(array $array, $keys): array
+    public static function filterKeys(array $array, $keys): array
     {
         return array_intersect_key($array, array_flip((array)$keys));
     }
 
-    public static function select(array $array, $keys): array
+    public static function selectKeys(array $array, $keys): array
     {
         $keys = static::wrap($keys);
-        return static::map($array, function ($item) use ($keys) {
+        return static::mapArray($array, function ($item) use ($keys) {
             $result = [];
 
             foreach ($keys as $key) {
-                if (static::accessible($item) && static::exists($item, $key)) {
+                if (static::isAccessible($item) && static::keyExists($item, $key)) {
                     $result[$key] = $item[$key];
                 } elseif (is_object($item) && isset($item->{$key})) {
                     $result[$key] = $item->{$key};
@@ -326,31 +237,7 @@ class ArrayManager
         });
     }
 
-    public static function pluck(array $array, $value, $key = null): array
-    {
-        $results = [];
-
-        [$value, $key] = static::explodePluckParameters($value, $key);
-
-        foreach ($array as $item) {
-            $itemValue = data_get($item, $value);
-            if (is_null($key)) {
-                $results[] = $itemValue;
-            } else {
-                $itemKey = data_get($item, $key);
-
-                if (is_object($itemKey) && method_exists($itemKey, '__toString')) {
-                    $itemKey = (string)$itemKey;
-                }
-
-                $results[$itemKey] = $itemValue;
-            }
-        }
-
-        return $results;
-    }
-
-    public static function map(array $array, callable $callback): array
+    public static function mapArray(array $array, callable $callback): array
     {
         $keys = array_keys($array);
 
@@ -363,84 +250,34 @@ class ArrayManager
         return array_combine($keys, $items);
     }
 
-    public static function mapWithKeys(array $array, callable $callback): array
+    public static function mapArrayWithKeys(array $array, callable $callback): array
     {
         $result = [];
 
         foreach ($array as $key => $value) {
             $assoc = $callback($value, $key);
-
             foreach ($assoc as $mapKey => $mapValue) {
                 $result[$mapKey] = $mapValue;
             }
         }
-
         return $result;
     }
 
-    public static function prepend(array $array, $value, $key = null): array
-    {
-        if (func_num_args() == 2) {
-            array_unshift($array, $value);
-        } else {
-            $array = [$key => $value] + $array;
-        }
-
-        return $array;
-    }
-
-    public static function query(array $array): string
+    public static function buildQuery(array $array): string
     {
         return http_build_query($array, '', '&', PHP_QUERY_RFC3986);
     }
 
-    public static function pull(&$array, $key, $default = null): array
+    public static function extractValue(&$array, $key, $default = null): array
     {
-        $value = static::get($array, $key, $default);
+        $value = static::getValue($array, $key, $default);
 
-        static::forget($array, $key);
+        static::forgetKey($array, $key);
 
         return $value;
     }
 
-    public static function random($array, $number = null, $preserveKeys = false)
-    {
-        $requested = is_null($number) ? 1 : $number;
-
-        $count = count($array);
-
-        if ($requested > $count) {
-            throw new \InvalidArgumentException(
-                "You requested {$requested} items, but there are only {$count} items available."
-            );
-        }
-
-        if (is_null($number)) {
-            return $array[array_rand($array)];
-        }
-
-        if ((int)$number === 0) {
-            return [];
-        }
-
-        $keys = array_rand($array, $number);
-
-        $results = [];
-
-        if ($preserveKeys) {
-            foreach ((array)$keys as $key) {
-                $results[$key] = $array[$key];
-            }
-        } else {
-            foreach ((array)$keys as $key) {
-                $results[] = $array[$key];
-            }
-        }
-
-        return $results;
-    }
-
-    public static function set(&$array, $key, $value)
+    public static function assignValue(&$array, $key, $value)
     {
         if (is_null($key)) {
             return $array = $value;
@@ -452,12 +289,7 @@ class ArrayManager
             if (count($keys) === 1) {
                 break;
             }
-
             unset($keys[$i]);
-
-            // If the key doesn't exist at this depth, we will just create an empty array
-            // to hold the next value, allowing us to create the arrays to hold final
-            // values at the correct depth. Then we'll keep digging into the array.
             if (!isset($array[$key]) || !is_array($array[$key])) {
                 $array[$key] = [];
             }
@@ -470,7 +302,7 @@ class ArrayManager
         return $array;
     }
 
-    public static function shuffle(array $array, $seed = null):array
+    public static function randomizeArray(array $array, $seed = null):array
     {
         if (is_null($seed)) {
             shuffle($array);
@@ -483,20 +315,12 @@ class ArrayManager
         return $array;
     }
 
-    protected static function explodePluckParameters($value, $key):array
-    {
-        $value = is_string($value) ? explode('.', $value) : $value;
 
-        $key = is_null($key) || is_array($key) ? $key : explode('.', $key);
-
-        return [$value, $key];
-    }
-
-    public static function sortRecursive($array, $options = SORT_REGULAR, $descending = false):array
+    public static function sortArrayRecursively($array, $options = SORT_REGULAR, $descending = false):array
     {
         foreach ($array as &$value) {
             if (is_array($value)) {
-                $value = static::sortRecursive($value, $options, $descending);
+                $value = static::sortArrayRecursively($value, $options, $descending);
             }
         }
 
@@ -513,61 +337,62 @@ class ArrayManager
         return $array;
     }
 
-    public static function sortRecursiveDesc($array, $options = SORT_REGULAR):array
+    public static function sortArrayRecursivelyDesc($array, $options = SORT_REGULAR):array
     {
-        return static::sortRecursive($array, $options, true);
+        return static::sortArrayRecursively($array, $options, true);
     }
 
-    public static function toCssClasses($array):string
-    {
-        $classList = static::wrap($array);
-
-        $classes = [];
-
-        foreach ($classList as $class => $constraint) {
-            if (is_numeric($class)) {
-                $classes[] = $constraint;
-            } elseif ($constraint) {
-                $classes[] = $class;
-            }
-        }
-
-        return implode(' ', $classes);
-    }
-
-    public static function toCssStyles($array):string
-    {
-        $styleList = static::wrap($array);
-
-        $styles = [];
-
-        foreach ($styleList as $class => $constraint) {
-            if (is_numeric($class)) {
-                $styles[] = static::finish($constraint, ';');
-            } elseif ($constraint) {
-                $styles[] = static::finish($class, ';');
-            }
-        }
-
-        return implode(' ', $styles);
-    }
-
-    public static function where($array, callable $callback):array
+    public static function filterArray($array, callable $callback):array
     {
         return array_filter($array, $callback, ARRAY_FILTER_USE_BOTH);
     }
 
-    public static function whereNotNull($array):array
+    public static function filterNotNull($array):array
     {
-        return static::where($array, fn($value) => !is_null($value));
+        return static::filterArray($array, fn($value) => !is_null($value));
     }
 
-    public static function wrap($value):array
+    public static function encapsulate($value):array
     {
         if (is_null($value)) {
             return [];
         }
 
         return is_array($value) ? $value : [$value];
+    }
+
+    public static function convertKeysToLower($array): array
+    {
+        return array_change_key_case($array, CASE_LOWER);
+    }
+
+    public static function convertKeysToUpper($array): array
+    {
+        return array_change_key_case($array, CASE_UPPER);
+    }
+    public static function extractRandomElements($array, $quantity = 1, $preserveKeys = false)
+    {
+        $totalAvailable = count($array);
+
+        if ($quantity > $totalAvailable) {
+            $quantity = $totalAvailable;
+        }
+
+        if ($quantity <= 0) {
+            return [];
+        }
+
+        $keys = array_rand($array, $quantity);
+        $selectedItems = [];
+
+        foreach ((array)$keys as $key) {
+            if ($preserveKeys) {
+                $selectedItems[$key] = $array[$key];
+            } else {
+                $selectedItems[] = $array[$key];
+            }
+        }
+
+        return $selectedItems;
     }
 }
